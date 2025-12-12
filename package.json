@@ -2,14 +2,14 @@
   "name": "EvomatQ_client",
   "private": true,
   "version": "0.0.0",
-  "type": "commonjs",
+  "type": "module",
   "main": "main.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "electron": "electron .",
-    "dist": "electron-builder --mac --win --linux"
+    "start-server": "node main.js",
+    "build-exe": "pkg main.js --targets node18-win-x64 --output client.exe"
   },
   "build": {
     "appId": "com.batuhan.evomatq",

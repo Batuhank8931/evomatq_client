@@ -65,6 +65,15 @@ function AutoShelves() {
     fetchRacks();
   }, []);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchRacks();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+
   const fetchRacks = async () => {
     try {
       const response = await API.rack_data();

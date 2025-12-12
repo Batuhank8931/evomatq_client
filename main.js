@@ -1,79 +1,103 @@
-const express = require("express");
+const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const Bonjour = require("bonjour");
+const express = require("express");
 const { exec } = require("child_process");
-const fs = require("fs");
-const { app: electronApp } = require("electron");
 
+// ------------------------
+// Port ve dist dizini
 const PORT = 5173;
 
-// ----------------------------------------
-// Get local IP
+// pkg ile çalışacak şekilde paths
+const BASE_PATH = path.dirname(process.execPath);
+const DIST_PATH = path.join(BASE_PATH, "dist");
+const CONFIG_PATH = path.join(BASE_PATH, "config.json");
+
+console.log("[CLIENT] BASE_PATH:", BASE_PATH);
+console.log("[CLIENT] DIST_PATH:", DIST_PATH);
+console.log("[CLIENT] CONFIG_PATH:", CONFIG_PATH);
+
+// ------------------------
+// IP alma
 function getLocalIP() {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name]) {
       if (iface.family === "IPv4" && !iface.internal) {
+        console.log("[CLIENT] Selected IP:", iface.address);
         return iface.address;
       }
     }
   }
   return "127.0.0.1";
 }
+
 const LOCAL_IP = getLocalIP();
 
-// ----------------------------------------
-// Writable config path (always works in Electron)
-const configPath = path.join(electronApp.getPath("userData"), "config.json");
-
-// Read or create config
-let configContent = { API_HOST: LOCAL_IP, API_PORT: PORT };
+// ------------------------
+// Config güncelle
+let configContent = {};
 try {
-  if (fs.existsSync(configPath)) {
-    configContent = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+  if (fs.existsSync(CONFIG_PATH)) {
+    console.log("[CLIENT] config.json bulundu, okunuyor...");
+    configContent = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
+    console.log("[CLIENT] config.json içeriği:", configContent);
+  } else {
+    console.log("[CLIENT] config.json bulunamadı, yeni oluşturulacak");
   }
 } catch (err) {
-  console.warn("Config okunamadı, yeni oluşturuluyor:", err);
+  console.warn("[CLIENT] Config okunamadı, yeni oluşturuluyor:", err);
 }
 
-// Update IP/PORT
 configContent.API_HOST = LOCAL_IP;
-configContent.API_PORT = 3008;
+configContent.API_PORT = "3008";
 
-fs.writeFileSync(configPath, JSON.stringify(configContent, null, 2), "utf-8");
-console.log(`✅ config.json güncellendi: ${configPath}`);
+try {
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(configContent, null, 2), "utf-8");
+  console.log(`[CLIENT] ✅ config.json güncellendi: ${CONFIG_PATH}`);
+  console.log(`[CLIENT] 🌍 Yeni IP: ${LOCAL_IP}, PORT: ${configContent.API_PORT}`);
+} catch (err) {
+  console.error("[CLIENT] config.json yazılamadı:", err);
+}
 
-// ----------------------------------------
-// Express app
+// ------------------------
+// Express app ile serve
 const app = express();
 
-// Serve config.json dynamically (must come BEFORE static)
+if (!fs.existsSync(DIST_PATH)) {
+  console.error("[CLIENT] DIST_PATH bulunamadı:", DIST_PATH);
+} else {
+  console.log("[CLIENT] DIST_PATH bulundu, static serve başlatılıyor");
+}
+
+// ------------------------
+// CONFIG_PATH'i serve et
 app.get("/config.json", (req, res) => {
-  try {
-    const data = fs.readFileSync(configPath, "utf-8");
-    res.type("application/json").send(data);
-  } catch {
-    res.status(404).json({ error: "Config not found" });
-  }
+  res.sendFile(CONFIG_PATH);
 });
 
-// Serve static files after
-app.use(express.static(path.join(__dirname, "dist")));
+
+// React build dosyalarını sun
+app.use(express.static(DIST_PATH));
+
 
 // SPA fallback
 app.get(/.*/, (req, res) => {
-  res.sendFile(path.join(__dirname, "dist", "index.html"));
+  const indexPath = path.join(DIST_PATH, "index.html");
+  console.log("[CLIENT] index.html servisi:", indexPath);
+  if (!fs.existsSync(indexPath)) {
+    console.error("[CLIENT] index.html bulunamadı:", indexPath);
+    return res.status(404).send("index.html bulunamadı!");
+  }
+  res.sendFile(indexPath);
 });
 
-// Start server
+// Server başlat
 app.listen(PORT, "0.0.0.0", () => {
   const url = `http://${LOCAL_IP}:${PORT}`;
-  console.log(`🌍 Server running at ${url}`);
+  console.log(`[CLIENT] 🚀 React app running at ${url}`);
 
-  const bonjour = Bonjour();
-  bonjour.publish({ name: "EvomatQ", type: "http", port: PORT });
-
+  // Tarayıcıyı aç
   const startCmd =
     process.platform === "darwin"
       ? "open"
@@ -82,6 +106,6 @@ app.listen(PORT, "0.0.0.0", () => {
       : "xdg-open";
 
   exec(`${startCmd} ${url}`, (err) => {
-    if (err) console.error("Tarayıcı açılamadı:", err);
+    if (err) console.error("[CLIENT] Tarayıcı açılamadı:", err);
   });
 });
